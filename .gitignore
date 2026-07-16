@@ -4,6 +4,9 @@
 .env.production
 .env.*.local
 
+# Persisted OAuth token store (access tokens/auth codes)
+data/
+
 # Node.js
 node_modules/
 npm-debug.log*
