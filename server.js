@@ -8,6 +8,7 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import Imap from 'imap';
 import { simpleParser } from 'mailparser';
@@ -2381,6 +2382,46 @@ class YahooMailMCPServer {
                     res.status(404).json({ error: 'No active SSE connection found' });
                 }
             }
+        });
+
+        // Streamable HTTP transport (MCP spec 2025-03-26+). This is the transport
+        // Claude's custom connectors expect; /mcp/sse + /mcp/message above remain
+        // for backwards compatibility with older SSE-only clients.
+        app.post('/mcp', async (req, res) => {
+            console.error('[MCP] POST /mcp (Streamable HTTP)');
+            try {
+                const transport = new StreamableHTTPServerTransport({
+                    sessionIdGenerator: undefined
+                });
+                res.on('close', () => transport.close());
+                await this.server.connect(transport);
+                await transport.handleRequest(req, res, req.body);
+            } catch (error) {
+                console.error('[MCP] Error handling Streamable HTTP request:', error);
+                if (!res.headersSent) {
+                    res.status(500).json({
+                        jsonrpc: '2.0',
+                        error: { code: -32603, message: 'Internal server error' },
+                        id: null
+                    });
+                }
+            }
+        });
+
+        app.get('/mcp', (req, res) => {
+            res.status(405).json({
+                jsonrpc: '2.0',
+                error: { code: -32000, message: 'Method not allowed: this server runs Streamable HTTP in stateless mode.' },
+                id: null
+            });
+        });
+
+        app.delete('/mcp', (req, res) => {
+            res.status(405).json({
+                jsonrpc: '2.0',
+                error: { code: -32000, message: 'Method not allowed: this server runs Streamable HTTP in stateless mode.' },
+                id: null
+            });
         });
 
         // Error handling middleware
